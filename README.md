@@ -719,66 +719,9 @@ mount | grep nfs
 tail -f /var/www/nextcloud/data/nextcloud.log
 ```
 
-```
-sudo -u www-data php occ files:scan --all
-```
-
-# Validation de l'infrastructure
-
-## Test DNS
-
-```bash
-nslookup srv-lin1-01
-nslookup srv-lin1-02
-nslookup nas-lin1-01
-```
-
-## Test DHCP
-
-```bash
-ip a
-```
-
-## Test LDAP
-
-connexion avec:
-
-```
-man01
-dev01
-ing01
-```
-
-## Test Nextcloud
-
-Création: 
-
-```
-test.txt
-```
-
-Dans:
-
-```
-Commun
-```
-
-## Test de synchronisation
-
-| Perso | /mnt/Perso |
-| ----- | ---------- |
-
-## Dépannage
-
-```bash
-tail -f /var/www/nextcloud/data/nextcloud.log
-```
-
 ```bash
 sudo -u www-data php occ files:scan --all
 ```
-
-
 
 ---
 
@@ -792,10 +735,7 @@ nslookup srv-lin1-01
 nslookup srv-lin1-02
 
 nslookup nas-lin1-01
-
 ```
-
-
 
 ## Test DHCP
 
