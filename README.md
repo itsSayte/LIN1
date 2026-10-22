@@ -556,8 +556,6 @@ systemctl restart slapd
 
 - Infrastructure destinée à un environnement pédagogique.
 
-
-
 # NAS-LIN1-01
 
 ## Présentation
@@ -767,31 +765,20 @@ Commun
 
 ## Test de synchronisation
 
-<style>
-a {
- text-decoration: none;
- color: #464feb;
-}
-tr th, tr td {
- border: 1px solid #e6e6e6;
-}
-tr th {
- background-color: #f5f5f5;
-}
-</style>
-
 | Perso | /mnt/Perso |
 | ----- | ---------- |
 
 ## Dépannage
 
-Shell
-
+```bash
 tail -f /var/www/nextcloud/data/nextcloud.log
+```
 
-Shell
-
+```bash
 sudo -u www-data php occ files:scan --all
+```
+
+
 
 ---
 
@@ -799,45 +786,48 @@ sudo -u www-data php occ files:scan --all
 
 ## Test DNS
 
-Shell
-
+```bash
 nslookup srv-lin1-01
 
 nslookup srv-lin1-02
 
 nslookup nas-lin1-01
 
+```
+
+
+
 ## Test DHCP
 
-Shell
-
+```bash
 ip a
+```
 
 ## Test LDAP
 
 Connexion avec :
 
-Plain Text
-
+```
 man01
 
 dev01
 
 ing01
+```
 
 ## Test Nextcloud
 
 Création :
 
-Plain Text
-
+```
 test.txt
+```
 
 dans :
 
-Plain Text
-
+```
 Commun
+```
 
 ## Test de synchronisation
 
