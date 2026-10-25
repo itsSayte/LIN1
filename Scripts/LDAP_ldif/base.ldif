@@ -1,0 +1,7 @@
+dn: ou=People,dc=LIN09,dc=local
+objectClass: organizationalUnit
+ou: People
+
+dn: ou=Groups,dc=LIN09,dc=local
+objectClass: organizationalUnit
+ou: Groups

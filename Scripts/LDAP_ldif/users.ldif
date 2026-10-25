@@ -1,0 +1,77 @@
+dn: uid=man01,ou=People,dc=LIN09,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+cn: Manager 01
+sn: Manager
+uid: man01
+uidNumber: 11001
+gidNumber: 10001
+homeDirectory: /home/man01
+loginShell: /bin/bash
+userPassword: {SSHA}rONiUncSHlurgAKAWvhVIfuFRyzQE4Ye
+
+dn: uid=man02,ou=People,dc=LIN09,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+cn: Manager 02
+sn: Manager
+uid: man02
+uidNumber: 11002
+gidNumber: 10001
+homeDirectory: /home/man02
+loginShell: /bin/bash
+userPassword: {SSHA}rONiUncSHlurgAKAWvhVIfuFRyzQE4Ye
+
+dn: uid=ing01,ou=People,dc=LIN09,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+cn: Ingenieur 01
+sn: Ingenieur
+uid: ing01
+uidNumber: 11003
+gidNumber: 10002
+homeDirectory: /home/ing01
+loginShell: /bin/bash
+userPassword: {SSHA}rONiUncSHlurgAKAWvhVIfuFRyzQE4Ye
+
+dn: uid=ing02,ou=People,dc=LIN09,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+cn: Ingenieur 02
+sn: Ingenieur
+uid: ing02
+uidNumber: 11004
+gidNumber: 10002
+homeDirectory: /home/ing02
+loginShell: /bin/bash
+userPassword: {SSHA}rONiUncSHlurgAKAWvhVIfuFRyzQE4Ye
+
+dn: uid=dev01,ou=People,dc=LIN09,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+cn: Developpeur 01
+sn: Developpeur
+uid: dev01
+uidNumber: 11005
+gidNumber: 10003
+homeDirectory: /home/dev01
+loginShell: /bin/bash
+userPassword: {SSHA}rONiUncSHlurgAKAWvhVIfuFRyzQE4Ye
+
+dn: uid=dev02,ou=People,dc=LIN09,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+cn: Developpeur 02
+sn: Developpeur
+uid: dev02
+uidNumber: 11006
+gidNumber: 10003
+homeDirectory: /home/dev02
+loginShell: /bin/bash
+userPassword: {SSHA}rONiUncSHlurgAKAWvhVIfuFRyzQE4Ye

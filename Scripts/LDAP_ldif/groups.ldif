@@ -1,0 +1,25 @@
+dn: cn=managers,ou=Groups,dc=LIN09,dc=local
+objectClass: posixGroup
+cn: managers
+gidNumber: 10001
+memberUid: man01
+memberUid: man02
+
+dn: cn=ingenieurs,ou=Groups,dc=LIN09,dc=local
+objectClass: posixGroup
+cn: ingenieurs
+gidNumber: 10002
+memberUid: ing01
+memberUid: ing02
+
+dn: cn=developpeurs,ou=Groups,dc=LIN09,dc=local
+objectClass: posixGroup
+cn: developpeurs
+gidNumber: 10003
+memberUid: dev01
+memberUid: dev02
+
+dn: cn=logiciels,ou=Groups,dc=LIN09,dc=local
+objectClass: posixGroup
+cn: logiciels
+gidNumber: 10004
