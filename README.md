@@ -705,25 +705,6 @@ systemctl restart apache2
 
 ---
 
-# 7. Bonnes pratiques
-
-- Sauvegarder régulièrement LDAP.
-- Vérifier l'état du RAID.
-- Contrôler les ACL.
-- Mettre à jour régulièrement le système.
-- Vérifier les journaux d'événements.
-
----
-
-# 8. Limites
-
-- Pas de haute disponibilité.
-- Pas de cluster LDAP.
-- Pas de redondance DNS.
-- Infrastructure destinée à un environnement pédagogique.
-
----
-
 # Conclusion
 
 L'infrastructure mise en place répond aux objectifs du projet. Les services DNS, DHCP, LDAP, NFS et Nextcloud fonctionnent de manière centralisée et permettent une gestion simplifiée des utilisateurs, des données et des ressources réseau.
