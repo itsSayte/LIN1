@@ -1,159 +1,138 @@
-# Documentation technique LIN1
+# Documentation Technique - Infrastructure LIN1
 
-## Introduction
+**Auteur :** Thibault Le Normand  
+**Projet :** LIN1 - Infrastructure réseau basée sur des solutions libres
 
-### Objectifs
+---
 
-L'objectif du projet est de mettre en place une infrastructure réseau complète basée sur linux permettant :
+# 1. Présentation du projet
 
-- La gestion des utilisateurs via LDAP
-- La résolution DNS
-- L'attribution dynamique d'adresses IP
-- Le stockage réseau centralisé
-- La synchronisation des données avec Nextcloud
+L'objectif du projet est de mettre en place une infrastructure réseau complète permettant la gestion centralisée des utilisateurs, du stockage et des services réseau.
 
-### Architecture
+L'environnement déployé repose sur trois serveurs Linux :
 
-| Machine     | Adresse IP  | Fonction                   |
-| ----------- | ----------- | -------------------------- |
-| SRV-LIN1-01 | 10.10.10.11 | DNS, DHCP, LDAP, Routage   |
-| SRV-LIN1-02 | 10.10.10.22 | Nextcloud                  |
+| Machine | Adresse IP | Fonction |
+|----------|----------|----------|
+| SRV-LIN1-01 | 10.10.10.11 | DNS, DHCP, LDAP, LAM, Routeur NAT |
+| SRV-LIN1-02 | 10.10.10.22 | Nextcloud |
 | NAS-LIN1-01 | 10.10.10.33 | OpenMediaVault, RAID1, NFS |
 
-# SRV-LIN1-01
+Des postes clients Linux et Windows permettent de valider le fonctionnement de l'infrastructure.
+
+---
+
+# 2. Architecture réseau
+
+L'infrastructure est organisée autour d'un réseau local :
+
+```text
+10.10.10.0/24
+```
+
+SRV-LIN1-01 joue le rôle de passerelle Internet et de serveur principal.
+
+```text
+                Internet
+                    │
+           Réseau NAT VMware
+                    │
+              SRV-LIN1-01
+             10.10.10.11
+                    │
+    ┌───────────────┼───────────────┐
+    │               │               │
+SRV-LIN1-02      NAS-LIN1-01     Clients
+10.10.10.22      10.10.10.33
+```
+
+---
+
+# 3. SRV-LIN1-01
 
 ## Présentation
 
-SRV-LIN1-01 est le serveur principal de l'infrastructure.
+SRV-LIN1-01 est le cœur de l'infrastructure.
 
-Il héberge les services suivants :
+Il fournit les services suivants :
 
 - DNS (Bind9)
-
-- DHCP (Kea-DHCP)
-
+- DHCP (Kea DHCP)
 - LDAP (OpenLDAP)
-
-- Routeur NAT
-
-- Accès Internet pour le LAN
+- LDAP Account Manager (LAM)
+- Routage NAT
 
 ---
 
-# Configuration matérielle
+## Configuration matérielle
 
-| Ressource         | Valeur             |
-| ----------------- | ------------------ |
-| RAM               | 1 GO               |
-| Disque            | 10 GO              |
-| Interfaces réseau | 2 (NAT, Host-Only) |
-| OS                | Debian 13          |
+| Ressource | Valeur |
+|------------|------------|
+| RAM | 1 Go |
+| Disque | 10 Go |
+| Interfaces réseau | 2 |
+| Système d'exploitation | Debian 13 |
 
 ---
 
-# Configuration réseau
+## Configuration réseau
 
-## Interfaces
-
-### WAN
+### Interface WAN
 
 ```text
 ens33
-
 DHCP
 ```
 
-### LAN
+Cette interface assure l'accès à Internet.
+
+### Interface LAN
 
 ```text
-ens34
-
+ens37
 10.10.10.11/24
 ```
 
-## Vérification
+Cette interface dessert l'infrastructure interne.
 
-Assurer vous que la configuration est appliquée correctement. vous que la configuration est appliquée correctement.
+### Validation
 
 ```bash
 ip a
-
 ip route
 ```
 
 ---
 
-# Configuration du routage et du NAT
+# Routage et NAT
 
-### Objectif
+## Objectif
 
-Le serveur SRV-LIN1-01 agit comme passerelle entre le réseau local `10.10.10.0/24` et Internet. Afin de permettre aux machines du LAN d'accéder aux ressources externes, le routage IPv4 et la traduction d'adresses (NAT) ont été mis en place.
+Permettre aux postes du réseau local d'accéder à Internet via SRV-LIN1-01.
 
-### Activation du routage IPv4
-
-Le routage IPv4 a été activé afin d'autoriser le transfert des paquets entre les interfaces WAN et LAN.
+## Activation du routage IPv4
 
 ```bash
 echo "net.ipv4.ip_forward=1" > /etc/sysctl.d/99-routing.conf
-
 sysctl --system
 ```
 
-### Configuration du NAT
-
-La traduction d'adresses est réalisée avec `iptables` afin que toutes les machines du réseau local puissent accéder à Internet en utilisant l'adresse IP publique du serveur.
+## Configuration du NAT
 
 ```bash
 iptables -t nat -A POSTROUTING -o ens33 -j MASQUERADE
-
-iptables -A FORWARD -i ens34 -o ens33 -j ACCEPT
-
-iptables -A FORWARD -i ens33 -o ens34 \
-
--m conntrack \
-
---ctstate RELATED,ESTABLISHED \
-
--j ACCEPT
 ```
 
-### Persistance de la configuration
+Cette règle remplace l'adresse source des postes du LAN par l'adresse WAN du serveur.
 
-Afin de conserver les règles de pare-feu après un redémarrage du serveur, le paquet `iptables-persistent` a été installé et les règles ont été sauvegardées.
+## Persistance de la configuration
 
 ```bash
-apt install iptables-persistent
-
 iptables-save > /etc/iptables/rules.v4
 ```
 
-### Vérification
+## Validation
 
-Contrôle de l'activation du routage :
-
-```bash
-sudo sysctl net.ipv4.ip_forward
-```
-
-Résultat attendu :
-
-```text
-net.ipv4.ip_forward = 1
-```
-
-Contrôle des règles NAT :
-
-```bash
-iptables -t nat -L -n -v
-```
-
-### Validation
-
-Depuis un client du réseau local, les tests suivants permettent de valider le fonctionnement du routage :
-
-```bash
-sudo reboot
-```
+Depuis un client :
 
 ```bash
 ping 8.8.8.8
@@ -163,140 +142,116 @@ ping 8.8.8.8
 ping google.com
 ```
 
-Les réponses obtenues confirment que les clients du réseau local peuvent accéder  à Internet via SRV-LIN1-01.
+La réussite de ces tests confirme le bon fonctionnement du routage.
 
 ---
 
-# Configuration DNS
+# Service DNS
 
-### Objectif
+## Présentation
 
-Le serveur DNS permet la résolution des noms des machines de l'infrastructure afin d'éviter l'utilisation systématique des adresses IP.
+Le service DNS est assuré par Bind9.
 
-### Domaine
+Il permet la résolution des noms internes du domaine ainsi que la résolution des domaines Internet.
 
-```
+## Domaine
+
+```text
 LIN09.local
 ```
 
+---
+
 ## Fichiers de configuration
 
-```
+```text
 /etc/bind/named.conf.local
-
+/etc/bind/named.conf.options
 /etc/bind/db.LIN09.local
-
 /etc/bind/db.10.10.10
 ```
 
-### Configuration de la zone directe
+---
 
-Fichier :
+## Zone directe
 
-```
-/etc/bind/db.LIN09.local
-```
+### Enregistrements
 
-Contenu :
-
-```
-$TTL 604800
-
-@ IN SOA srv-lin1-01.LIN09.local. root.LIN09.local. (
-
-        3
-
-        604800
-
-        86400
-
-        2419200
-
-        604800 )
-
-@               IN NS srv-lin1-01.LIN09.local.
-
-srv-lin1-01     IN A 10.10.10.11
-
-srv-lin1-02     IN A 10.10.10.22
-
-nas-lin1-01     IN A 10.10.10.33
+```text
+srv-lin1-01.LIN09.local
+srv-lin1-02.LIN09.local
+nas-lin1-01.LIN09.local
 ```
 
-### Configuration de la zone inverse
+Correspondance :
 
-Fichier:
-
-```
-/etc/bind/db.10.10.10
-```
-
-Contenu:
-
-```
-$TTL    604800
-@       IN      SOA     srv-lin1-01.LIN09.local. root.LIN09.local. (
-                              2         ; Serial
-                         604800         ; Refresh
-                          86400         ; Retry
-                        2419200         ; Expire
-                         604800 )       ; Negative Cache TTL
-;
-@       IN      NS      srv-lin1-01.LIN09.local.
-11      IN      PTR     srv-lin1-01.LIN09.local.
-22      IN      PTR     srv-lin1-02.LIN09.local.
-33      IN      PTR     nas-lin1-01.LIN09.local.
+```text
+10.10.10.11
+10.10.10.22
+10.10.10.33
 ```
 
-### Validation de la configuration
+---
+
+## Zone inverse
+
+Les adresses IP sont associées aux noms :
+
+```text
+10.10.10.11 -> srv-lin1-01
+10.10.10.22 -> srv-lin1-02
+10.10.10.33 -> nas-lin1-01
+```
+
+---
+
+## Résolution Internet
+
+Le serveur utilise le DNS du réseau NAT VMware comme forwarder :
+
+```bash
+forwarders {
+        192.168.28.2;
+};
+```
+
+---
+
+## Validation
+
+Test de résolution locale :
+
+```bash
+nslookup srv-lin1-02.LIN09.local
+```
+
+Test de résolution Internet :
+
+```bash
+nslookup google.com
+```
+
+---
+
+## Dépannage
+
+État du service :
+
+```bash
+systemctl status named
+```
+
+Validation de la configuration :
+
+```bash
+named-checkconf
+```
+
+Validation de la zone :
 
 ```bash
 named-checkzone LIN09.local /etc/bind/db.LIN09.local
 ```
-
-Résultat :
-
-```text
-zone LIN09.local/IN: loaded serial 3
-
-OK
-```
-
-### Redémarrage du service
-
-```bash
-systemctl restart bind9
-```
-
-### Vérification
-
-```bash
-nslookup srv-lin1-02.LIN09.local 10.10.10.11
-```
-
-Résultat :
-
-```text
-Name: srv-lin1-02.LIN09.local
-
-Address: 10.10.10.22
-```
-
-```bash
-nslookup nas-lin1-01.LIN09.local 10.10.10.11
-```
-
-Résultat :
-
-```text
-Name: nas-lin1-01.LIN09.local
-
-Address: 10.10.10.33
-```
-
-### Conclusion
-
-La résolution DNS interne est fonctionnelle. Les machines de l'infrastructure peuvent être jointes à l'aide de leur nom de domaine plutôt qu'à l'aide de leur adresse IP.
 
 ---
 
@@ -304,63 +259,60 @@ La résolution DNS interne est fonctionnelle. Les machines de l'infrastructure p
 
 ## Présentation
 
-Le serveur DHCP a été installé sur **SRV-LIN1-01** à l'aide de **Kea DHCP Server**.
+Le serveur DHCP distribue automatiquement les paramètres réseau aux clients.
 
-Son rôle est d'attribuer automatiquement les paramètres réseau aux clients du réseau local.
+Le service utilisé est :
 
-## Installation
-
-```bash
-apt install kea-dhcp4-server
+```text
+Kea DHCP Server
 ```
 
-## Fichier de configuration
-
-```
-/etc/kea/kea-dhcp4.conf
-```
+---
 
 ## Configuration
 
-Fichier de configuration :
+### Réseau
 
+```text
+10.10.10.0/24
 ```
-/etc/kea/kea-dhcp4.conf
+
+### Pool DHCP
+
+```text
+10.10.10.100
+10.10.10.200
 ```
 
-Configuration appliquée :
+### Passerelle distribuée
 
-- Réseau : `10.10.10.0/24`
-
-- Plage DHCP : `10.10.10.100 - 10.10.10.200`
-
-- Passerelle : `10.10.10.11`
-
-- DNS : `10.10.10.11`
-
-- Domaine : `LIN09.local`
-
-## Démarrage du service
-
-```bash
-systemctl enable kea-dhcp4-server
-
-systemctl restart kea-dhcp4-server
+```text
+10.10.10.11
 ```
+
+### Serveur DNS distribué
+
+```text
+10.10.10.11
+```
+
+### Domaine distribué
+
+```text
+LIN09.local
+```
+
+---
 
 ## Validation
 
-Vérification sur un client :
+Sur un client :
 
 ```bash
 ip a
 ```
 
-Obtention automatique d'une adresse IP entre :
-
-```
-10.10.10.100 - 10.10.10.200
-```
+Obtention automatique d'une adresse comprise dans la plage définie.
 
 Vérification de la passerelle :
 
@@ -370,35 +322,31 @@ ip route
 
 Résultat attendu :
 
-```
+```text
 default via 10.10.10.11
 ```
 
-## Dépannage
+---
 
-État du service :
+## Dépannage
 
 ```bash
 systemctl status kea-dhcp4-server
 ```
 
-Consultation des journaux :
-
 ```bash
 journalctl -u kea-dhcp4-server
 ```
 
-## Conclusion
-
-Le serveur DHCP permet l'attribution automatique des paramètres réseau aux clients du réseau local et simplifie leur intégration dans l'infrastructure.
+---
 
 # Service LDAP
 
-## Fonction
+## Présentation
 
-Le serveur LDAP a été mis en place sur **SRV-LIN1-01** à l'aide d'OpenLDAP.
+LDAP permet de centraliser l'authentification des utilisateurs de l'infrastructure.
 
-Il permet de centraliser la gestion des utilisateurs et l'authentification des différents services de l'infrastructure, notamment Nextcloud.
+Cette centralisation simplifie l'administration des comptes et permet leur utilisation dans plusieurs services, notamment Nextcloud.
 
 ---
 
@@ -410,33 +358,29 @@ apt install slapd ldap-utils
 
 ---
 
-## Configuration LDAP
-
-Base DN :
+## Base LDAP
 
 ```text
 dc=LIN09,dc=local
 ```
 
-## Structure de l'annuaire
+---
 
-### Unités Organisationnelles (OU)
+## Organisation
+
+### Unités Organisationnelles
 
 ```text
-People
-
-Groups
+ou=People
+ou=Groups
 ```
 
 ### Groupes
 
 ```text
 managers
-
 ingenieurs
-
 developpeurs
-
 logiciels
 ```
 
@@ -444,59 +388,47 @@ logiciels
 
 ```text
 man01
-
 man02
 
 ing01
-
 ing02
 
 dev01
-
 dev02
 ```
 
 ---
 
-## Vérification
+## Validation
 
-Affichage du contenu de l'annuaire :
+Affichage de l'annuaire :
 
 ```bash
 ldapsearch -x -LLL -b dc=LIN09,dc=local
 ```
 
-Vérification d'un utilisateur :
+Recherche d'un utilisateur :
 
 ```bash
-ldapsearch -x -LLL -b dc=LIN09,dc=local "(uid=dev01)"
+ldapsearch -x -LLL \
+-b dc=LIN09,dc=local \
+"(uid=dev01)"
 ```
 
----
+Authentification administrateur :
 
-## Exemple d'utilisation
-
-Connexion à Nextcloud avec un compte LDAP :
-
-```text
-Utilisateur : dev01
-
-Mot de passe : ********
+```bash
+ldapwhoami -x \
+-D "cn=admin,dc=LIN09,dc=local"
 ```
-
-Les utilisateurs créés dans LDAP peuvent ainsi s'authentifier sur les différents services compatibles avec l'annuaire.
 
 ---
 
 ## Dépannage
 
-Vérification du service :
-
 ```bash
 systemctl status slapd
 ```
-
-Consultation de l'annuaire :
 
 ```bash
 ldapsearch -x -LLL -b dc=LIN09,dc=local
@@ -504,78 +436,91 @@ ldapsearch -x -LLL -b dc=LIN09,dc=local
 
 ---
 
-## Conclusion
-
-Le serveur LDAP centralise l'ensemble des comptes utilisateurs de l'infrastructure et facilite l'authentification sur les différents services, notamment Nextcloud.
-
----
-
-# Maintenance
-
-## Sauvegarde LDAP
-
-```bash
-slapcat > ldap-backup.ldif
-```
-
-## Sauvegarde DHCP
-
-```bash
-cp /etc/kea/kea-dhcp4.conf /root/kea-dhcp4.conf.backup 
-```
-
-## Redémarrage des services
-
-```bash
-systemctl restart bind9
-
-systemctl restart kea-dhcp4-server
-
-systemctl restart slapd
-```
-
----
-
-# Bonnes pratiques
-
-- Sauvegarder régulièrement LDAP.
-
-- Utiliser des mots de passe robustes.
-
-- Vérifier les logs régulièrement.
-
-- Restreindre l'accès administrateur.
-
----
-
-# Limites
-
-- Pas de redondance DNS.
-
-- Pas de haute disponibilité LDAP.
-
-- Infrastructure destinée à un environnement pédagogique.
-
-# NAS-LIN1-01
+# LDAP Account Manager (LAM)
 
 ## Présentation
 
-NAS-LIN1-01 héberge les données de l'infrastructure.
+LAM fournit une interface web permettant l'administration graphique des utilisateurs et groupes LDAP.
+
+---
+
+## Installation
+
+```bash
+apt install ldap-account-manager
+```
+
+---
+
+## Accès
+
+```text
+http://10.10.10.11/lam
+```
+
+---
+
+## Paramètres
+
+### Serveur
+
+```text
+ldap://localhost:389
+```
+
+### Administrateur
+
+```text
+cn=admin,dc=LIN09,dc=local
+```
+
+### Tree suffix
+
+```text
+dc=LIN09,dc=local
+```
+
+### Users suffix
+
+```text
+ou=People,dc=LIN09,dc=local
+```
+
+### Groups suffix
+
+```text
+ou=Groups,dc=LIN09,dc=local
+```
+
+---
+
+# 4. NAS-LIN1-01
+
+## Présentation
+
+NAS-LIN1-01 est le serveur de stockage de l'infrastructure.
+
+Les données sont protégées par un RAID1 logiciel et mises à disposition via NFS.
 
 Services :
 
 - OpenMediaVault
 - RAID1
 - NFS
+- ACL
+
+---
 
 ## Configuration matérielle
 
-| Ressource       | Valeur         |
-| --------------- | -------------- |
-| RAM             | 1 GO           |
-| Disques Système | 10 GO          |
-| RAID1           | 2 x 10GO       |
-| OS              | OpenMediaVault |
+| Ressource | Valeur |
+|------------|------------|
+| RAM | 1 Go |
+| Disque système | 10 Go |
+| RAID1 | 2 × 10 Go |
+| Système | OpenMediaVault |
+
+---
 
 ## RAID1
 
@@ -583,24 +528,34 @@ Services :
 
 Assurer la redondance des données.
 
+Les informations sont simultanément écrites sur les deux disques.
+
 ### Validation
 
 ```bash
 cat /proc/mdstat
 ```
 
-## Partages
+Le RAID doit apparaître dans un état :
 
-```
-Commun
-Clients
-Logiciels
-Perso
+```text
+clean
 ```
 
-## NFS
+---
 
-### Validation
+## Partages NFS
+
+Répertoires créés :
+
+```text
+/export/Commun
+/export/Clients
+/export/Logiciels
+/export/Perso
+```
+
+Validation :
 
 ```bash
 exportfs -v
@@ -610,187 +565,127 @@ exportfs -v
 showmount -e localhost
 ```
 
+---
+
 ## ACL
 
-### Vérification
+Les ACL permettent de contrôler les accès des différents groupes d'utilisateurs.
 
-```bashb
+Validation :
+
+```bash
 getfacl /export/Commun
 ```
 
-## Dépannage
+---
 
-```bashb
-systemctl status nfs-kernel-server
-```
-
-## Maintenance
-
-```bash
-df -h
-```
-
-```bash
-cat /proc/mdstat
-```
-
-# SRV-LIN1-02
+# 5. SRV-LIN1-02
 
 ## Présentation
 
-SRV-LIN1-02 héberge la plateforme Nextcloud.
+SRV-LIN1-02 héberge la plateforme Nextcloud de l'infrastructure.
 
-Fonctions :
+Services :
 
-- Gestion de fichiers
-- Synchronisation
-- LDAP
-- NFS
-
-## Configuration Matérielle
-
-| Ressource | Valeur      |
-| --------- | ----------- |
-| RAM       | 2 GO        |
-| Disque    | 10 GO       |
-| IP        | 10.10.10.22 |
-
-## Installation de Nextcloud
-
-### Services utilisés
-
-- Apache2
-
-- MariaDB
-
+- Apache
 - PHP
-
+- MariaDB
 - Nextcloud
 
-## Intégration LDAP
+---
 
-### Serveur LDAP
+## Configuration matérielle
 
-- 10.10.10.11
+| Ressource | Valeur |
+|------------|------------|
+| RAM | 2 Go |
+| Disque | 20 Go |
+| Adresse IP | 10.10.10.22 |
+| Système | Debian 13 |
 
-### Base DN
+---
 
-```
-dc=LIN09,dc=local
-```
+## Nextcloud
 
-### Validation
+### Fonction
 
-Connexion avec :
+Nextcloud permet :
 
-```
+- le stockage des fichiers ;
+- la synchronisation ;
+- le partage de fichiers ;
+- la gestion des calendriers.
+
+---
+
+## Authentification LDAP
+
+Nextcloud utilise OpenLDAP comme source d'authentification.
+
+Connexion :
+
+```text
 dev01
+man01
+ing01
 ```
 
-## Montage NFS
+---
 
-### Répertoires
+## Partages NFS
 
-```
+Montages :
+
+```text
 /mnt/Commun
 /mnt/Clients
 /mnt/Logiciels
 /mnt/Perso
 ```
 
-### Validation
+Validation :
 
 ```bash
 mount | grep nfs
 ```
 
-## Stockage externes
-
-| Stockage  | Chemin         |
-| --------- | -------------- |
-| Commun    | /mnt/Commun    |
-| Clients   | /mnt/Clients   |
-| Logiciels | /mnt/Logiciels |
-| Perso     | /mnt/Perso     |
-
-## Dépannage
-
-```bash
-tail -f /var/www/nextcloud/data/nextcloud.log
-```
-
-```bash
-sudo -u www-data php occ files:scan --all
-```
-
 ---
 
-# 5. Validation de l'infrastructure
+## Synchronisation
 
-## Test DNS
+Création d'un fichier :
 
-```bash
-nslookup srv-lin1-01
-
-nslookup srv-lin1-02
-
-nslookup nas-lin1-01
-```
-
-## Test DHCP
-
-```bash
-ip a
-```
-
-## Test LDAP
-
-Connexion avec :
-
-```
-man01
-
-dev01
-
-ing01
-```
-
-## Test Nextcloud
-
-Création :
-
-```
+```text
 test.txt
 ```
 
 dans :
 
-```
+```text
 Commun
 ```
 
-## Test de synchronisation
+puis vérification de sa présence :
 
-Création d'un fichier depuis un client.
+- dans Nextcloud ;
+- sur le NAS ;
+- sur les postes clients.
 
-Vérification de la présence du fichier :
+---
 
-- dans Nextcloud 
-- sur le NAS 
-- sur les autres clients
-
-# Maintenance
+# 6. Maintenance
 
 ## Sauvegarde LDAP
 
-```
+```bash
 slapcat > ldap-backup.ldif
 ```
 
 ## Sauvegarde DHCP
 
 ```bash
-cp /etc/kea/kea-dhcp4.conf /root/kea-dhcp4.conf.backup
+cp /etc/kea/kea-dhcp4.conf \
+/root/kea-dhcp4.conf.backup
 ```
 
 ## Vérification RAID
@@ -802,27 +697,33 @@ cat /proc/mdstat
 ## Redémarrage des services
 
 ```bash
-systemctl restart bind9
+systemctl restart named
 systemctl restart kea-dhcp4-server
 systemctl restart slapd
+systemctl restart apache2
 ```
 
-# Bonnes pratiques
+---
 
-- Sauvegarder régulièrement l'annuaire LDAP.
-- Surveiller l'état du RAID.
-- Utiliser des mots de passe robustes.
-- Vérifier les journaux système.
-- Tester régulièrement les sauvegardes.
+# 7. Bonnes pratiques
 
-# Limites
+- Sauvegarder régulièrement LDAP.
+- Vérifier l'état du RAID.
+- Contrôler les ACL.
+- Mettre à jour régulièrement le système.
+- Vérifier les journaux d'événements.
 
-Pas de haute disponibilité.
+---
 
+# 8. Limites
+
+- Pas de haute disponibilité.
+- Pas de cluster LDAP.
 - Pas de redondance DNS.
-- Pas de serveur LDAP secondaire.
-- Infrastructure conçue pour un environnement pédagogique.
+- Infrastructure destinée à un environnement pédagogique.
+
+---
 
 # Conclusion
 
-L'infrastructure répond aux objectifs du projet. Les services DNS, DHCP, LDAP, NFS et Nextcloud sont opérationnels. Les utilisateurs LDAP peuvent s'authentifier sur Nextcloud et accéder aux ressources de stockage selon les droits définis.
+L'infrastructure mise en place répond aux objectifs du projet. Les services DNS, DHCP, LDAP, NFS et Nextcloud fonctionnent de manière centralisée et permettent une gestion simplifiée des utilisateurs, des données et des ressources réseau.
