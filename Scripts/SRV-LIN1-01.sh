@@ -1,355 +1,585 @@
 #!/bin/bash
-# ==============================================================================
-# Nom du fichier : SRV-LIN1-01.sh
-# Description    : Automation of Installation, Service Setup, and Server Configuration 01
-# Auteur         : Le Normand Thibault
-# Date           : 20.08.2026
-# Version        : 1.0.0
-# ==============================================================================
 
-# stop on error
+###############################################################################
+# SRV-LIN1-01.sh
+#
+# Auteur : Thibault Le Normand
+# Projet LIN1
+#
+# Configuration automatique de :
+# - Réseau
+# - Hostname
+# - Routage IPv4
+# - NAT
+# - DNS (Bind9)
+# - DHCP (Kea DHCP)
+# - LDAP (OpenLDAP)
+#
+###############################################################################
+
 set -e
-# update packages
-echo ">>= Update of packages =<<"
-apt update -y
-apt-get update -y
-# Install services DHCP, DNS, LDAP et VIM
-echo ">>= Download packages =<<"
-apt-get install kea-dhcp4-server ldap-account-manager -y
-apt install bind9 bind9utils bind9-doc bind9-host dnsutils slapd ldap-utils vim iptables-persistent -y
+
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+echo 'export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin' > /root/.bashrc
+
+###############################################################################
+# VARIABLES
+###############################################################################
+
+DOMAIN="LIN09.local"
+
+# Interfaces réseau
+WAN_IF="ens33"
+LAN_IF="ens37"
+
+# Adresse réseau locale
+LAN_IP="10.10.10.11"
+
+# LDAP
+LDAP_ADMIN="cn=admin,dc=LIN09,dc=local"
+
+# Répertoire du script
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+###############################################################################
+# VERIFICATION DES PRIVILEGES
+###############################################################################
+
+if [ "$EUID" -ne 0 ]; then
+    echo "Veuillez exécuter ce script avec sudo."
+    exit 1
+fi
+
+###############################################################################
+# FORCER APT A UTILISER IPV4
+###############################################################################
+
+echo 'Acquire::ForceIPv4 "true";' > /etc/apt/apt.conf.d/99force-ipv4
+apt update
+
+###############################################################################
+# MISE A JOUR DU SYSTEME
+###############################################################################
+
+echo "[+] Mise à jour du système"
+
+apt update
+apt upgrade -y
+
+###############################################################################
+# CONFIGURATION DU NOM D'HOTE
+###############################################################################
+
+echo "[+] Configuration du hostname"
+
+hostnamectl set-hostname SRV-LIN1-01
+
+###############################################################################
+# CONFIGURATION DU FICHIER HOSTS
+###############################################################################
+
+echo "[+] Configuration du fichier hosts"
+
+cat > /etc/hosts << EOF
+127.0.0.1       localhost
+127.0.1.1       SRV-LIN1-01
+
+10.10.10.11     srv-lin1-01.LIN09.local srv-lin1-01
+10.10.10.22     srv-lin1-02.LIN09.local srv-lin1-02
+10.10.10.33     nas-lin1-01.LIN09.local nas-lin1-01
+
+::1             localhost ip6-localhost ip6-loopback
+EOF
+
+###############################################################################
+# CONFIGURATION RESEAU
+###############################################################################
+
+cat > /etc/network/interfaces << EOF
+source /etc/network/interfaces.d/*
+
+auto lo
+iface lo inet loopback
+
+allow-hotplug ${WAN_IF}
+iface ${WAN_IF} inet dhcp
+
+auto ${LAN_IF}
+iface ${LAN_IF} inet static
+    address ${LAN_IP}/24
+EOF
+
+# Pas de restart networking ici
 
 
-echo ">>= Backup of configurations files =<<"
-cp -n /etc/bind/named.conf /etc/bind/named.conf.bak
-cp -n /etc/bind/named.conf.local /etc/bind/named.conf.local.bak
-cp -n /etc/bind/named.conf.options /etc/bind/named.conf.options.bak
-# Enter the ldap admin
+###############################################################################
+# VERIFICATION RESEAU
+###############################################################################
 
-# Setup network configuration using nmcli
-echo ">>= Setup networking =<<"
-apt install network-manager -y
-nmcli connection add \
-    type ethernet \
-    con-name "ens34" \
-    ifname ens34 \
-    ipv4.method manual \
-    ipv4.addresses 10.10.10.11/24 \
-    ipv4.gateway 10.10.10.1 \
-    ipv4.dns "10.10.10.11"
-# Restart network services
-systemctl restart networking
+echo "[+] Vérification réseau"
 
-# Configure global BIND options
-echo ">>= Configuring named.conf.options =<<"
-cat > /etc/bind/named.conf.options << 'EOF'
+ip a
+ip route
+
+ping -c 2 8.8.8.8
+
+getent hosts deb.debian.org
+
+###############################################################################
+# ACTIVATION DU ROUTAGE IPV4
+###############################################################################
+
+echo "[+] Activation du routage IPv4"
+
+cat > /etc/sysctl.d/99-routing.conf << EOF
+net.ipv4.ip_forward=1
+EOF
+
+sudo sysctl --system
+
+
+
+
+
+###############################################################################
+# INSTALLATION NAT
+###############################################################################
+
+echo "[+] Installation d'iptables"
+
+apt install -y iptables iptables-persistent
+
+###############################################################################
+# CONFIGURATION NAT
+###############################################################################
+
+echo "[+] Configuration du NAT"
+
+# Traduction d'adresse afin de permettre
+# au réseau LAN d'accéder à Internet
+
+sudo iptables -t nat -A POSTROUTING -o ${WAN_IF} -j MASQUERADE
+
+# Autorise les connexions sortantes du LAN
+
+sudo iptables -A FORWARD -i ${LAN_IF} -o ${WAN_IF} -j ACCEPT
+
+# Autorise les réponses provenant d'Internet
+
+sudo iptables -A FORWARD \
+-i ${WAN_IF} \
+-o ${LAN_IF} \
+-m conntrack \
+--ctstate RELATED,ESTABLISHED \
+-j ACCEPT
+
+# Sauvegarde des règles
+
+sudo iptables-save > /etc/iptables/rules.v4
+
+###############################################################################
+# INSTALLATION DNS
+###############################################################################
+
+echo "[+] Installation de Bind9"
+
+apt install -y bind9 bind9-utils bind9-doc dns-root-data
+
+###############################################################################
+# CONFIGURATION DNS RECURSIF
+###############################################################################
+
+echo "[+] Configuration des forwarders DNS"
+
+cat > /etc/bind/named.conf.options << EOF
 options {
         directory "/var/cache/bind";
 
         recursion yes;
-
+        allow-recursion { any; };
         allow-query { any; };
 
-        allow-recursion {
-                127.0.0.1;
-                10.10.10.0/24;
+        forwarders {
+                192.168.28.2;
         };
 
-        forwarders {
-                192.168.133.2;
-                };
-
         dnssec-validation no;
+
+        listen-on { any; };
+        listen-on-v6 { any; };
 };
 EOF
 
-# Declare forward and reverse lookup zones
-echo ">>= Configuring DNS zones =<<"
-cat > /etc/bind/named.conf.local << 'EOF'
-zone "LIN09.local" {
-        type master;
-        file "/etc/bind/db.LIN09.local";
+
+###############################################################################
+# CONFIGURATION DES ZONES DNS
+###############################################################################
+
+echo "[+] Création des zones DNS"
+
+cat > /etc/bind/named.conf.local << EOF
+zone "${DOMAIN}" {
+    type master;
+    file "/etc/bind/db.${DOMAIN}";
 };
 
 zone "10.10.10.in-addr.arpa" {
-        type master;
-        file "/etc/bind/db.10.10.10";
+    type master;
+    file "/etc/bind/db.10.10.10";
 };
 EOF
 
-# Create the forward zone file
-echo ">>= Creating forward lookup zone file =<<"
-cat > /etc/bind/db.LIN09.local << 'EOF'
-$TTL 604800
-@       IN      SOA     srv-lin1-01.LIN09.local. root.LIN09.local. (
-                        2
-                        604800
-                        86400
-                        2419200
-                        604800 )
+###############################################################################
+# ZONE DNS DIRECTE
+###############################################################################
 
-@               IN      NS      srv-lin1-01.LIN09.local.
-srv-lin1-01     IN      A       10.10.10.11
+cat > /etc/bind/db.${DOMAIN} << EOF
+\$TTL 604800
+
+@ IN SOA srv-lin1-01.${DOMAIN}. root.${DOMAIN}. (
+        1
+        604800
+        86400
+        2419200
+        604800 )
+
+@ IN NS srv-lin1-01.${DOMAIN}.
+
+srv-lin1-01 IN A 10.10.10.11
+srv-lin1-02 IN A 10.10.10.22
+nas-lin1-01 IN A 10.10.10.33
 EOF
 
-# Create the reverse zone file
-echo ">>= Creating reverse lookup zone file =<<"
-cat > /etc/bind/db.10.10.10 << 'EOF'
-$TTL 604800
-@       IN      SOA     srv-lin1-01.LIN09.local. root.LIN09.local. (
-                        2
-                        604800
-                        86400
-                        2419200
-                        604800 )
+###############################################################################
+# ZONE DNS INVERSE
+###############################################################################
 
-@       IN      NS      srv-lin1-01.LIN09.local.
-11      IN      PTR     srv-lin1-01.LIN09.local.
+cat > /etc/bind/db.10.10.10 << EOF
+\$TTL 604800
+
+@ IN SOA srv-lin1-01.${DOMAIN}. root.${DOMAIN}. (
+        1
+        604800
+        86400
+        2419200
+        604800 )
+
+@ IN NS srv-lin1-01.${DOMAIN}.
+
+11 IN PTR srv-lin1-01.${DOMAIN}.
+22 IN PTR srv-lin1-02.${DOMAIN}.
+33 IN PTR nas-lin1-01.${DOMAIN}.
 EOF
 
+###############################################################################
+# VERIFICATION DNS
+###############################################################################
 
-echo ">>= Setting file ownership =<<"
-chown bind:bind /etc/bind/db.LIN09.local
-chown bind:bind /etc/bind/db.10.10.10
+echo "[+] Vérification DNS"
 
-
-echo ">>= Checking BIND configuration syntax =<<"
 named-checkconf
 
+named-checkzone \
+${DOMAIN} \
+/etc/bind/db.${DOMAIN}
 
-echo ">>= Validating forward lookup zone =<<"
-named-checkzone LIN09.local /etc/bind/db.LIN09.local
+named-checkzone \
+10.10.10.in-addr.arpa \
+/etc/bind/db.10.10.10
 
+###############################################################################
+# DEMARRAGE DNS
+###############################################################################
 
-echo ">>= Validating reverse lookup zone =<<"
-named-checkzone 10.10.10.in-addr.arpa /etc/bind/db.10.10.10
+systemctl enable named
+systemctl restart named
 
-echo ">>= Restarting DNS service =<<"
-systemctl restart bind9
+###############################################################################
+# INSTALLATION DHCP
+###############################################################################
 
-echo ">>= DNS configuration completed successfully =<<"
+echo "[+] Installation du serveur DHCP"
 
-echo ">>= Start DHCP Configuration=<<"
+apt install -y kea-dhcp4-server
 
-echo ">>= Creating backup of current configuration =<<"
-cp -f /etc/kea/kea-dhcp4.conf /etc/kea/kea-dhcp4.conf.bak 2>/dev/null || true
+###############################################################################
+# CONFIGURATION DHCP
+###############################################################################
 
-echo ">>= Creating DHCP configuration =<<"
-
-cat > /etc/kea/kea-dhcp4.conf << 'EOF'
+cat > /etc/kea/kea-dhcp4.conf << EOF
 {
-  "Dhcp4": {
+ "Dhcp4": {
 
-    "interfaces-config": {
-      "interfaces": [ "ens34" ]
-    },
+  "interfaces-config": {
+   "interfaces": [ "${LAN_IF}" ]
+  },
 
-    "control-socket": {
-      "socket-type": "unix",
-      "socket-name": "/run/kea/kea4-ctrl-socket"
-    },
+  "lease-database": {
+   "type": "memfile"
+  },
 
-    "lease-database": {
-      "type": "memfile",
-      "lfc-interval": 3600
-    },
+  "valid-lifetime": 3600,
 
-    "valid-lifetime": 600,
-    "max-valid-lifetime": 7200,
+  "subnet4": [
+   {
+    "id": 1,
 
-    "subnet4": [
-      {
-        "id": 1,
+    "subnet": "10.10.10.0/24",
 
-        "subnet": "10.10.10.0/24",
+    "pools": [
+     {
+      "pool": "10.10.10.100 - 10.10.10.200"
+     }
+    ],
 
-        "pools": [
-          {
-            "pool": "10.10.10.100 - 10.10.10.200"
-          }
-        ],
-
-        "option-data": [
-          {
-            "name": "routers",
-            "data": "10.10.10.11"
-          },
-          {
-            "name": "domain-name-servers",
-            "data": "10.10.10.11"
-          },
-          {
-            "name": "domain-name",
-            "data": "LIN09.local"
-          }
-        ]
-      }
+    "option-data": [
+     {
+      "name": "routers",
+      "data": "10.10.10.11"
+     },
+     {
+      "name": "domain-name-servers",
+      "data": "10.10.10.11"
+     },
+     {
+      "name": "domain-name",
+      "data": "LIN09.local"
+     }
     ]
-  }
+   }
+  ]
+ }
 }
 EOF
+###############################################################################
+# VERIFICATION DHCP
+###############################################################################
 
-echo ">>= Checking configuration syntax =<<"
-kea-dhcp4 -t /etc/kea/kea-dhcp4.conf
+echo "[+] Vérification DHCP"
 
-echo ">>= Enabling DHCP service =<<"
 systemctl enable kea-dhcp4-server
-
-echo ">>= Restarting DHCP service =<<"
 systemctl restart kea-dhcp4-server
 
-echo ">>= Displaying service status =<<"
-systemctl status kea-dhcp4-server --no-pager
+sleep 2
 
-echo ">>= Checking DHCP listening port =<<"
-ss -lunp | grep 67 || true
+systemctl is-active kea-dhcp4-server
 
-echo ">>= Installation completed successfully =<<"
-echo "DHCP Pool     : 10.10.10.100 - 10.10.10.200"
-echo "Gateway       : 10.10.10.254"
-echo "DNS Server    : 10.10.10.11"
-echo "DNS Domain    : LIN09.local"
-echo "Interface     : ens34"
+journalctl -u kea-dhcp4-server -n 10 --no-pager
 
 
-echo ">>= Start LDAP Configuration"
-BASE_DN="dc=lin09,dc=local"
-ADMIN_DN="cn=admin,$BASE_DN"
+###############################################################################
+# DEMARRAGE DHCP
+###############################################################################
 
-echo ">>= Generating LDAP password hash =<<"
+systemctl enable kea-dhcp4-server
+systemctl restart kea-dhcp4-server
 
-LDAP_HASH=$(slappasswd -s "Pa\$\$w0rd")
+sleep 2
 
-echo ">>= Creating organizational units =<<"
+systemctl --no-pager --full status kea-dhcp4-server
+###############################################################################
+# INSTALLATION LDAP
+###############################################################################
 
-cat > /tmp/base.ldif << EOF
-dn: ou=People,$BASE_DN
-objectClass: organizationalUnit
-ou: People
 
-dn: ou=Groups,$BASE_DN
-objectClass: organizationalUnit
-ou: Groups
+LDAP_DOMAIN="LIN09.local"
+LDAP_ORG="Lin1-LABO"
+LDAP_ADMIN="cn=admin,dc=LIN09,dc=local"
+LDAP_ADMIN_PASSWORD='Pa$$w0rd'
+LDAP_PASSWORD="${LDAP_ADMIN_PASSWORD}"
+
+###############################################################################
+# PRECONFIGURATION DE SLAPD
+###############################################################################
+
+# Préconfiguration de slapd
+debconf-set-selections << EOF
+slapd slapd/no_configuration boolean false
+slapd slapd/domain string ${LDAP_DOMAIN}
+slapd shared/organization string ${LDAP_ORG}
+slapd slapd/password1 password ${LDAP_ADMIN_PASSWORD}
+slapd slapd/password2 password ${LDAP_ADMIN_PASSWORD}
+slapd slapd/backend select MDB
+slapd slapd/purge_database boolean true
+slapd slapd/move_old_database boolean true
 EOF
 
-echo ">>= Creating groups =<<"
+###############################################################################
+# INSTALLATION LDAP
+###############################################################################
 
-cat > /tmp/groups.ldif << EOF
-dn: cn=managers,ou=Groups,$BASE_DN
-objectClass: posixGroup
-cn: managers
-gidNumber: 10001
+echo "[+] Installation du serveur LDAP"
 
-dn: cn=ingenieurs,ou=Groups,$BASE_DN
-objectClass: posixGroup
-cn: ingenieurs
-gidNumber: 10002
+DEBIAN_FRONTEND=noninteractive apt install -y slapd ldap-utils
 
-dn: cn=developpeurs,ou=Groups,$BASE_DN
-objectClass: posixGroup
-cn: developpeurs
-gidNumber: 10003
+###############################################################################
+# IMPORT DE LA STRUCTURE LDAP
+###############################################################################
 
-dn: cn=logiciels,ou=Groups,$BASE_DN
-objectClass: posixGroup
-cn: logiciels
-gidNumber: 10004
-EOF
+echo "[+] Import des OU"
 
-echo ">>= Creating users =<<"
+ldapadd -x \
+-D "${LDAP_ADMIN}" \
+-w "${LDAP_PASSWORD}" \
+-f "${SCRIPT_DIR}/LDAP_ldif/base.ldif"
 
-cat > /tmp/users.ldif << EOF
-dn: uid=man01,ou=People,$BASE_DN
-objectClass: inetOrgPerson
-objectClass: posixAccount
-objectClass: shadowAccount
-cn: Manager 01
-sn: Manager
-uid: man01
-uidNumber: 11001
-gidNumber: 10001
-homeDirectory: /home/man01
-loginShell: /bin/bash
-userPassword: $LDAP_HASH
+###############################################################################
+# IMPORT DES GROUPES LDAP
+###############################################################################
 
-dn: uid=man02,ou=People,$BASE_DN
-objectClass: inetOrgPerson
-objectClass: posixAccount
-objectClass: shadowAccount
-cn: Manager 02
-sn: Manager
-uid: man02
-uidNumber: 11002
-gidNumber: 10001
-homeDirectory: /home/man02
-loginShell: /bin/bash
-userPassword: $LDAP_HASH
+echo "[+] Import des groupes"
 
-dn: uid=ing01,ou=People,$BASE_DN
-objectClass: inetOrgPerson
-objectClass: posixAccount
-objectClass: shadowAccount
-cn: Ingenieur 01
-sn: Ingenieur
-uid: ing01
-uidNumber: 11003
-gidNumber: 10002
-homeDirectory: /home/ing01
-loginShell: /bin/bash
-userPassword: $LDAP_HASH
+ldapadd -x \
+-D "${LDAP_ADMIN}" \
+-w "${LDAP_PASSWORD}" \
+-f "${SCRIPT_DIR}/LDAP_ldif/groups.ldif"
 
-dn: uid=ing02,ou=People,$BASE_DN
-objectClass: inetOrgPerson
-objectClass: posixAccount
-objectClass: shadowAccount
-cn: Ingenieur 02
-sn: Ingenieur
-uid: ing02
-uidNumber: 11004
-gidNumber: 10002
-homeDirectory: /home/ing02
-loginShell: /bin/bash
-userPassword: $LDAP_HASH
+###############################################################################
+# IMPORT DES UTILISATEURS LDAP
+###############################################################################
 
-dn: uid=dev01,ou=People,$BASE_DN
-objectClass: inetOrgPerson
-objectClass: posixAccount
-objectClass: shadowAccount
-cn: Developpeur 01
-sn: Developpeur
-uid: dev01
-uidNumber: 11005
-gidNumber: 10003
-homeDirectory: /home/dev01
-loginShell: /bin/bash
-userPassword: $LDAP_HASH
-EOF
+echo "[+] Import des utilisateurs"
 
-echo ">>= Importing organizational units =<<"
-ldapadd -x -D "$ADMIN_DN" -W -f /tmp/base.ldif
+ldapadd -x \
+-D "${LDAP_ADMIN}" \
+-w "${LDAP_PASSWORD}" \
+-f "${SCRIPT_DIR}/LDAP_ldif/users.ldif"
 
-echo ">>= Importing groups =<<"
-ldapadd -x -D "$ADMIN_DN" -W -f /tmp/groups.ldif
+###############################################################################
+# DEMARRAGE LDAP
+###############################################################################
 
-echo ">>= Importing users =<<"
-ldapadd -x -D "$ADMIN_DN" -W -f /tmp/users.ldif
+systemctl enable slapd
+systemctl restart slapd
 
-echo "Displaying LDAP users"
-ldapsearch -x -LLL -b "ou=People,$BASE_DN" uid
+###############################################################################
+# VERIFICATION LDAP
+###############################################################################
 
-echo "Displaying LDAP groups"
-ldapsearch -x -LLL -b "ou=Groups,$BASE_DN" cn
+echo "[+] Vérification LDAP"
 
-echo "OpenLDAP configuration completed successfully"
+ldapwhoami -x \
+-D "${LDAP_ADMIN}" \
+-w "${LDAP_PASSWORD}"
 
-echo "Configuration IP route"
+ldapsearch -x -LLL \
+-b dc=LIN09,dc=local
 
-echo "net.ipv4.ip_forward=1" >> /etc/sysctl.conf
-sysctl -p
-# Enable NAT
-iptables -t nat -A POSTROUTING -o ens33 -j MASQUERADE
-# Enable Forwarding
-sudo iptables -t nat -A POSTROUTING -o ens33 -j MASQUERADE
-sudo iptables -A FORWARD -i ens34 -o ens33 -j ACCEPT
-sudo iptables -A FORWARD -i ens33 -o ens34 -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
-sudo netfilter-persistent save
+ldapsearch -x -LLL \
+-b dc=LIN09,dc=local \
+"(uid=dev01)"
 
+
+
+
+###############################################################################
+# INSTALLATION APACHE
+###############################################################################
+
+echo "[+] Installation Apache"
+
+apt install -y apache2
+
+systemctl enable apache2
+systemctl restart apache2
+
+
+###############################################################################
+# INSTALLATION LDAP ACCOUNT MANAGER (LAM)
+###############################################################################
+
+echo "[+] Installation de LDAP Account Manager"
+
+apt install -y ldap-account-manager
+
+
+LAM_CONF="/var/lib/ldap-account-manager/config/lam.conf"
+
+sed -i 's|"Admins": "cn=Manager,dc=my-domain,dc=com"|"Admins": "cn=admin,dc=LIN09,dc=local"|' "$LAM_CONF"
+
+sed -i 's|"loginSearchSuffix": "dc=yourdomain,dc=org"|"loginSearchSuffix": "dc=LIN09,dc=local"|' "$LAM_CONF"
+
+sed -i 's|"suffix_user": "ou=People,dc=my-domain,dc=com"|"suffix_user": "ou=People,dc=LIN09,dc=local"|' "$LAM_CONF"
+
+sed -i 's|"suffix_group": "ou=group,dc=my-domain,dc=com"|"suffix_group": "ou=Groups,dc=LIN09,dc=local"|' "$LAM_CONF"
+
+sed -i 's|"treeViewSuffix": "dc=yourdomain,dc=org"|"treeViewSuffix": "dc=LIN09,dc=local"|' "$LAM_CONF"
+
+chown www-data:root "$LAM_CONF"
+chmod 600 "$LAM_CONF"
+
+systemctl restart apache2
+
+###############################################################################
+# ACTIVATION DES MODULES APACHE NECESSAIRES
+###############################################################################
+
+/usr/sbin/a2enmod ssl
+/usr/sbin/a2enmod rewrite
+
+###############################################################################
+# REDÉMARRAGE D'APACHE
+###############################################################################
+
+systemctl restart apache2
+
+###############################################################################
+# INFORMATIONS LAM
+###############################################################################
+
+echo ""
+echo "=================================================="
+echo "LDAP ACCOUNT MANAGER"
+echo "=================================================="
+echo ""
+echo "URL : http://${LAN_IP}/lam"
+echo ""
+echo "Configuration du profil LAM"
+echo ""
+echo "Server address  : ldap://localhost:389"
+echo "Valid users     : cn=admin,dc=LIN09,dc=local"
+echo "Tree suffix     : dc=LIN09,dc=local"
+echo "Users suffix    : ou=People,dc=LIN09,dc=local"
+echo "Groups suffix   : ou=Groups,dc=LIN09,dc=local"
+echo ""
+echo "Mot de passe LDAP : ${LDAP_PASSWORD}"
+echo ""
+
+###############################################################################
+# ETAT DES SERVICES
+###############################################################################
+
+echo ""
+echo "=================================================="
+echo "ETAT DES SERVICES"
+echo "=================================================="
+
+echo ""
+echo "Bind9 :"
+systemctl is-active named
+
+echo ""
+echo "Kea DHCP :"
+systemctl is-active kea-dhcp4-server
+
+echo ""
+echo "OpenLDAP :"
+systemctl is-active slapd
+
+echo ""
+echo "WAN : ${WAN_IF}"
+echo "LAN : ${LAN_IF}"
+
+echo ""
+echo "=================================================="
+echo "CONFIGURATION TERMINEE"
+echo "=================================================="
+
+echo ""
+echo "Tests recommandés :"
+echo "nslookup srv-lin1-02.${DOMAIN}"
+echo "nslookup nas-lin1-01.${DOMAIN}"
+echo "ldapsearch -x -LLL -b dc=LIN09,dc=local"
+echo "iptables -t nat -L -n -v"
+echo ""
