@@ -3,7 +3,7 @@
 ###############################################################################
 # SRV-LIN1-01.sh
 #
-# Auteur : Thibault Le Normand
+# Auteur : Thibault 
 # Projet LIN1
 #
 # Configuration automatique de :
