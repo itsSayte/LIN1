@@ -2,7 +2,7 @@
 
 ## Auteur
 
-**Thibault Le Normand**
+**Thibault**
 
 ---
 
