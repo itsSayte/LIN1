@@ -28,7 +28,7 @@ Les scripts fournis réalisent l'installation et la configuration automatique de
 
 # Arborescence
 
-```text
+```
 .
 ├── README.md
 ├── SRV-LIN1-01.sh
@@ -50,7 +50,7 @@ Les scripts fournis réalisent l'installation et la configuration automatique de
 
 Les scripts ont été développés et testés sur :
 
-```text
+```
 Debian 13
 ```
 
@@ -72,18 +72,19 @@ su -
 
 Le répertoire :
 
-```text
+```
 LDAP_ldif
 ```
 
 doit être présent dans le même dossier que :
 
-```text
+```
 SRV-LIN1-01.sh
 ```
 
 ## Configuration DNS
 Pour évité tout problème lors du déploiement sur les deux serveurs. 
+Il faut configurer le DNS avant l'installation.
 ```bash
 cat > /etc/resolv.conf << EOF
 search LIN09.local
@@ -121,7 +122,7 @@ chmod +x SRV-LIN1-01.sh
 ### Vérifications
 
 Contrôle des services :
-
+- Vérifier que les services fonctionnes
 ```bash
 systemctl is-active named
 systemctl is-active kea-dhcp4-server
@@ -129,9 +130,9 @@ systemctl is-active slapd
 systemctl is-active apache2
 ```
 
-Toutes les commandes doivent retourner :
+Touts les services doivent retourner :
 
-```text
+```
 active
 ```
 
@@ -202,8 +203,8 @@ mount | grep nfs
 
 ### Accès Nextcloud
 
-```text
-https://10.10.10.22
+```
+http://10.10.10.22
 ```
 
 ---
@@ -216,8 +217,8 @@ Après l'exécution du script SRV-LIN1-02 :
 
 1. Ouvrir :
 
-```text
-https://10.10.10.22
+```
+http://10.10.10.22
 ```
 
 2. Créer le compte administrateur.
@@ -253,7 +254,7 @@ cn=admin,dc=LIN09,dc=local
 
 Configurer les partages :
 
-```text
+```
 /mnt/Commun
 /mnt/Clients
 /mnt/Logiciels
@@ -262,7 +263,7 @@ Configurer les partages :
 
 dans :
 
-```text
+```
 Administration
 → Stockages externes
 ```
@@ -273,7 +274,7 @@ Administration
 
 ## Groupes
 
-```text
+```
 managers
 ingenieurs
 developpeurs
@@ -282,7 +283,7 @@ logiciels
 
 ## Utilisateurs
 
-```text
+```
 man01
 man02
 
