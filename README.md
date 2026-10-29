@@ -111,6 +111,8 @@ Le script configure automatiquement :
 ### Lancement
 
 ```bash
+apt-get update
+
 chmod +x SRV-LIN1-01.sh
 
 ./SRV-LIN1-01.sh
@@ -171,6 +173,8 @@ Le script configure automatiquement :
 ### Lancement
 
 ```bash
+apt-get update
+
 chmod +x SRV-LIN1-02.sh
 
 ./SRV-LIN1-02.sh
