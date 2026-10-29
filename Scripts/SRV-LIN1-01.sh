@@ -110,9 +110,8 @@ iface ${LAN_IF} inet static
     address ${LAN_IP}/24
 EOF
 
-# Pas de restart networking ici
 
-
+ip link set ${LAN_IF} up
 ###############################################################################
 # VERIFICATION RESEAU
 ###############################################################################
