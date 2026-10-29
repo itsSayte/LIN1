@@ -39,7 +39,9 @@ Les scripts fournis réalisent l'installation et la configuration automatique de
 │   └── users.ldif
 └── Documentation
     ├── Documentation-Technique.md
-    └── POC.md
+    ├── Schéma.drawio
+    └── Schéma.png
+
 ```
 
 ---
