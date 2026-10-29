@@ -3,7 +3,7 @@
 ###############################################################################
 # SRV-LIN1-01.sh
 #
-# Auteur : Thibault Le Normand
+# Auteur : Thibault 
 # Projet LIN1
 #
 # Configuration automatique de :
@@ -110,9 +110,8 @@ iface ${LAN_IF} inet static
     address ${LAN_IP}/24
 EOF
 
-# Pas de restart networking ici
 
-
+ip link set ${LAN_IF} up
 ###############################################################################
 # VERIFICATION RESEAU
 ###############################################################################
@@ -137,6 +136,10 @@ net.ipv4.ip_forward=1
 EOF
 
 sudo sysctl --system
+
+
+
+
 
 ###############################################################################
 # INSTALLATION NAT
