@@ -108,7 +108,7 @@ sysctl --system
 ## Configuration du NAT
 
 ```bash
-iptables -t nat -A POSTROUTING -o ens33 -j MASQUERADE
+sudo iptables -t nat -A POSTROUTING -o ens33 -j MASQUERADE
 ```
 
 Cette règle remplace l'adresse source des postes du LAN par l'adresse WAN du serveur.
